@@ -1,0 +1,3 @@
+#Riverpod for Flutter
+flutter_riverpod: ^2.4.0
+responsive_builder: ^0.7.0

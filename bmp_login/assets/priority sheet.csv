@@ -1,0 +1,4 @@
+loanNo,customerName,amount,plan,requestMonth,soldBy,status,remark
+1001,John Doe,5000,Standard,2026-02,Agent1,PENDING,First loan
+1002,Jane Smith,7000,Premium,2026-01,Agent2,APPROVED,Second loan
+1003,Sam Lee,3000,Basic,2026-02,Agent3,CANCELLED_BY_CUSTOMER,Cancelled by user
