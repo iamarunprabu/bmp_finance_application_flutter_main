@@ -46,6 +46,20 @@ class _LoanRequestListScreenState extends State<LoanRequestListScreen> {
           ),
         ),
         centerTitle: true,
+        actions: [
+          Obx(() => !controller.isAdminMode.value
+              ? IconButton(
+                  icon: Icon(Icons.add_circle_outline, color: theme.colorScheme.primary),
+                  splashColor: theme.colorScheme.primary.withOpacity(0.3),
+                  splashRadius: 24,
+                  onPressed: () {
+                    Get.toNamed('/loan-request-form')?.then((_) {
+                      controller.refreshList();
+                    });
+                  },
+                )
+              : const SizedBox()),
+        ],
       ),
       body: Obx(() {
         if (controller.isLoading.value) {
@@ -143,7 +157,9 @@ class _LoanRequestListScreenState extends State<LoanRequestListScreen> {
                             ? () => LoanDetailDialog.show(
                                   context,
                                   loan: loan,
-                                  onUpdated: () => controller.refreshList(),
+                                  onUpdated: () {
+                                    controller.removeLoanFromList(loan.id.toString());
+                                  },
                                 )
                             : null,
                         child: _buildLoanCard(loan, controller, index),
@@ -454,49 +470,82 @@ class _LoanRequestListScreenState extends State<LoanRequestListScreen> {
   Widget _buildErrorState(LoanListController controller) {
     final theme = Theme.of(context);
     return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.error_outline,
-            size: 60,
-            color: Colors.red.withOpacity(0.5),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            'Failed to load requests',
-            style: TextStyle(
-              color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
-              fontSize: 18,
-              fontWeight: FontWeight.w500,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: Colors.red.withOpacity(0.1),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                Icons.error_outline,
+                size: 48,
+                color: Colors.red.withOpacity(0.7),
+              ),
             ),
-          ),
-          const SizedBox(height: 8),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 40),
-            child: Text(
+            const SizedBox(height: 24),
+            Text(
+              'Failed to load requests',
+              style: TextStyle(
+                color: theme.colorScheme.onSurface,
+                fontSize: 20,
+                fontWeight: FontWeight.w600,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 12),
+            Text(
               controller.errorMessage.value,
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: Theme.of(context).colorScheme.onSurface.withOpacity(0.3),
-                fontSize: 13,
+                color: theme.colorScheme.onSurface.withOpacity(0.6),
+                fontSize: 14,
+                height: 1.4,
               ),
             ),
-          ),
-          const SizedBox(height: 24),
-          ElevatedButton.icon(
-            onPressed: () => controller.refreshList(),
-            icon: Icon(Icons.refresh, color: Theme.of(context).colorScheme.onPrimary),
-            label: Text('Retry', style: TextStyle(color: Theme.of(context).colorScheme.onPrimary)),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: theme.colorScheme.primary,
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
+            const SizedBox(height: 32),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: () => controller.refreshList(),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: theme.colorScheme.primary,
+                  foregroundColor: theme.colorScheme.onPrimary,
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  elevation: 2,
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.refresh,
+                      color: theme.colorScheme.onPrimary,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Retry',
+                      style: TextStyle(
+                        color: theme.colorScheme.onPrimary,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

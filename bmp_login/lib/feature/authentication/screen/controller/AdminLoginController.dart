@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:bmp_login/presentation/admin_dashboard.dart';
 import '../controller/auth_controller.dart';
 
 class AdminLoginController extends StatelessWidget {
@@ -44,7 +43,7 @@ class AdminLoginController extends StatelessWidget {
               width: double.infinity,
               height: 48,
               child: ElevatedButton(
-                onPressed: () => controller.login("ADMIN"), // ✅ API call
+                onPressed: () => controller.login(),
                 child: const Text("LOGIN AS ADMIN"),
               ),
             ),

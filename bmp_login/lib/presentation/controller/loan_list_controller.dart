@@ -4,11 +4,7 @@ import 'package:bmp_login/feature/authentication/model/loan_request_model.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'dart:io';
-import 'package:flutter/material.dart';
-import 'package:get/get.dart';
-import 'package:dio/dio.dart' as dio;
 import 'package:dio/dio.dart';
-import 'package:file_picker/file_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:open_file/open_file.dart';
 
@@ -46,15 +42,25 @@ class LoanListController extends GetxController {
 
   Future<void> _loadUsernameAndFetch() async {
     final username = await JwtStorage.getUsername();
-
+    final role = await JwtStorage.getUserRole();
     loggedInUsername.value = username ?? '';
 
-    print('Logged in username: ${loggedInUsername.value}');
-    print('isAdminMode : ${isAdminMode.value}, filterStatus : ${filterStatus}');
-
-    if (filterUsername == null || filterUsername!.isEmpty) {
-      filterUsername = loggedInUsername.value;
-      print('filterUsername set from JWT $filterUsername');
+    // If ROLE_SUPER_ADMIN or ROLE_ADMIN, set username to null
+    if (role == 'ROLE_SUPER_ADMIN' || role == 'ROLE_ADMIN') {
+      isAdminMode.value = true;
+      // For admin mode, only set filterUsername to null if not already set from arguments
+      if (filterUsername == null) {
+        filterUsername = null;
+      }
+      print('Admin/SuperAdmin mode - filterUsername: $filterUsername');
+    } else {
+      // For user mode, use the filterUsername from arguments if provided, otherwise use JWT username
+      if (filterUsername == null || filterUsername!.isEmpty) {
+        filterUsername = loggedInUsername.value;
+        print('User mode - filterUsername set from JWT: $filterUsername');
+      } else {
+        print('User mode - filterUsername from arguments: $filterUsername');
+      }
     }
     fetchUserLoanRequests();
   }
@@ -69,49 +75,38 @@ class LoanListController extends GetxController {
 
       List<LoanRequestModel> requests;
       if (isAdminMode.value) {
-        print(isAdminMode.value);
+        print('Admin mode: ${isAdminMode.value}');
         if (filterStatus != null && filterStatus!.isNotEmpty) {
           final status = filterStatus!.toUpperCase();
-
-          if (status == 'PENDING') {
-            // Dedicated pending endpoint
-            requests = await _loanService.getFilteredRequests(
-              status: status,
-              username:
-                  filterUsername?.isNotEmpty == true ? filterUsername : null,
-            );
-            print(
-              'Fetched ${requests.length} pending loan requests for Admins (filter: status=$filterStatus, username=$filterUsername)',
-            );
-          } else {
-            // Other status filters
-            requests = await _loanService.getFilteredRequests(
-              status: status,
-              username:
-                  filterUsername?.isNotEmpty == true ? filterUsername : null,
-            );
-            print(
-              'Fetched ${requests.length} loan requests for Admin (filter: status=$filterStatus, username=$filterUsername)',
-            );
-          }
+          requests = await _loanService.getFilteredRequests(
+            status: status,
+            username: filterUsername?.isNotEmpty == true ? filterUsername : null,
+          );
+          print('Fetched ${requests.length} $filterStatus loan requests for Admin (username=$filterUsername)');
         } else {
-          // No filter — fetch all
           requests = await _loanService.getAllRequests();
           print('Fetched ${requests.length} all loan requests for Admin');
         }
       } else {
-        requests = await _loanService.getUserRequests();
-        print(
-          'Fetched ${requests.length} loan requests for User (filter: status=$filterStatus, username=$filterUsername)',
-        );
+        // User mode: always use current user's username for filtering
+        final currentUsername = await JwtStorage.getUsername();
+        if (filterStatus != null && filterStatus!.isNotEmpty) {
+          // Use filter endpoint only when status is specified
+          requests = await _loanService.getFilteredRequests(
+            status: filterStatus!.toUpperCase(),
+            username: currentUsername,
+          );
+          print('Fetched ${requests.length} ${filterStatus} loan requests for User (username=$currentUsername)');
+        } else {
+          // Use regular user requests endpoint for "All" requests
+          requests = await _loanService.getUserRequests();
+          print('Fetched ${requests.length} loan requests for User');
+        }
       }
 
-      // Fixed: Actually assigning the results to the reactive list
       loanRequests.assignAll(requests);
     } catch (e) {
       hasError.value = true;
-      errorMessage.value = e.toString();
-      print('Error fetching user loan requests: $e');
       errorMessage.value = e.toString().replaceAll('Exception: ', '');
       print('Error fetching user loan requests: $e');
 
@@ -130,6 +125,10 @@ class LoanListController extends GetxController {
     } finally {
       isLoading.value = false;
     }
+  }
+
+  void removeLoanFromList(String loanId) {
+    loanRequests.removeWhere((loan) => loan.id.toString() == loanId);
   }
 
   Future<void> refreshList() async {
@@ -183,145 +182,96 @@ class LoanListController extends GetxController {
     }
   }
 
-  Future<void> importExcel(BuildContext context) async {
-    // 1. Pick the file
-    FilePickerResult? result = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: ['csv', 'xlsx'],
-    );
-
-    if (result != null && result.files.single.path != null) {
-      String filePath = result.files.single.path!;
-      // FIX: Get the actual name of the file picked (e.g., loan_requests_sample.csv)
-      String fileName = result.files.single.name;
-      final username = await JwtStorage.getUsername();
-      // 2. Prepare FormData
-      dio.FormData formData = dio.FormData.fromMap({
-        'file': await dio.MultipartFile.fromFile(
-          filePath,
-          filename:
-              fileName, // Use actual name so backend sees the .csv extension
-        ),
-        'username': username,
-      });
-
-      try {
-        // Show loading indicator (optional but recommended)
-
-        // Get your auth token
-        final token = await JwtStorage.getToken();
-
-        // FIX: Use 10.0.2.2 to talk to your local machine from an Android Emulator
-        final response = await dio.Dio().post(
-          'http://10.0.2.2:8080/api/loan/import-excel',
-          data: formData,
-          options: dio.Options(headers: {'Authorization': 'Bearer $token'}),
-        );
-
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(response.data['message'] ?? 'Import complete'),
-              backgroundColor: Colors.green,
-            ),
-          );
-        }
-
-        // Refresh your dashboard/list
-        await refreshList();
-      } on dio.DioException catch (e) {
-        print('import exception $e');
-        String errorMessage = 'Import failed';
-        if (e.response?.statusCode == 403) {
-          errorMessage = 'Permission Denied: Admin role required.';
-        } else if (e.response?.statusCode == 401) {
-          errorMessage = 'Session expired. Please login again.';
-        } else if (e.type == dio.DioExceptionType.connectionTimeout) {
-          errorMessage = 'Cannot reach server. Check IP address.';
-        }
-
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(errorMessage), backgroundColor: Colors.red),
-          );
-        }
-      } catch (e) {
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
-          );
-        }
-      }
-    }
-  }
-
   Future<void> exportExcel(BuildContext context) async {
     try {
-      final dir = await getApplicationDocumentsDirectory();
-      // final savePath = '${dir.path}/loan_requests.xlsx';
-      final savePath =
-          '/storage/emulated/0/Download/loan_requests.xlsx'; //temp folder
-      print('Saving Excel to: $savePath');
+      Directory? directory;
+      
+      if (Platform.isAndroid) {
+        // Get external storage and construct Downloads path dynamically
+        final externalDir = await getExternalStorageDirectory();
+        print('External storage directory: ${externalDir?.path}');
+        
+        if (externalDir != null) {
+          final basePath = externalDir.path.split('/Android')[0];
+          print('Base storage path: $basePath');
+          
+          final downloadsDir = Directory('$basePath/Download');
+          print('Downloads directory path: ${downloadsDir.path}');
+          print('Downloads directory exists: ${await downloadsDir.exists()}');
+          
+          // Try Downloads folder first, fallback to external storage
+          if (await downloadsDir.exists()) {
+            directory = downloadsDir;
+            print('Using Downloads directory');
+          } else {
+            // Try creating Downloads folder
+            try {
+              directory = await downloadsDir.create(recursive: true);
+              print('Created Downloads directory');
+            } catch (e) {
+              print('Failed to create Downloads directory: $e');
+              directory = externalDir; // Fallback to app's external directory
+              print('Using external storage directory as fallback');
+            }
+          }
+        }
+      } else {
+        directory = await getApplicationDocumentsDirectory();
+      }
 
+      if (directory == null) {
+        throw Exception('Could not access storage directory');
+      }
+
+      final savePath = '${directory.path}/loan_requests.xlsx';
+      print('Final save path: $savePath');
+      
       final token = await JwtStorage.getToken();
+      print('Starting download...');
 
       final response = await Dio().download(
         'http://10.0.2.2:8080/api/loan/export-excel',
         savePath,
         options: Options(
-          headers: {
-            'Authorization': 'Bearer $token',
-          },
+          headers: {'Authorization': 'Bearer $token'},
         ),
       );
-
-      print('Download status: ${response.statusCode}');
-
+      
+      print('Download response status: ${response.statusCode}');
+      
+      // Check if file was actually created
       final file = File(savePath);
+      final fileExists = await file.exists();
+      print('File exists after download: $fileExists');
+      
+      if (fileExists) {
+        final fileSize = await file.length();
+        print('File size: $fileSize bytes');
+      }
 
-      if (await file.exists()) {
-        print('File exists at $savePath');
-
-        await OpenFile.open(savePath);
-
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Excel file downloaded and opened.'),
-              backgroundColor: Colors.blue,
-            ),
-          );
-        }
-      } else {
-        print('File does NOT exist at $savePath');
-
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('File not found after download!'),
-              backgroundColor: Colors.red,
-            ),
-          );
+      // Try to open the file automatically
+      if (fileExists) {
+        try {
+          final result = await OpenFile.open(savePath);
+          print('OpenFile result: ${result.message}');
+        } catch (e) {
+          print('Could not auto-open file: $e');
         }
       }
-    } on DioException catch (e) {
-      print('DioException: $e');
 
       if (context.mounted) {
-        String msg = e.response?.statusCode == 403
-            ? 'Admin access required'
-            : 'Export failed';
-
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(msg),
-            backgroundColor: Colors.red,
+            content: Text(fileExists 
+              ? 'Excel downloaded successfully to: ${directory.path}'
+              : 'Download completed but file not found'),
+            backgroundColor: fileExists ? Colors.green : Colors.orange,
+            duration: const Duration(seconds: 5),
           ),
         );
       }
     } catch (e) {
-      print('Other error: $e');
-
+      print('Export error: $e');
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(

@@ -12,6 +12,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'dart:io';
+import 'package:dio/dio.dart' as dio;
+import 'package:dio/dio.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:open_file/open_file.dart';
+import 'package:path_provider/path_provider.dart';
 
 // Wrap with ProviderScope in main.dart if not already
 // Responsive and animated Drawer
@@ -67,9 +73,10 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
   Future<void> fetchDashboardStats() async {
     try {
       final token = await JwtStorage.getToken();
+      final username = await JwtStorage.getUsername();
 
       final response = await http.get(
-        Uri.parse('${ApplicationConstant.baseUrl}/api/loan/dashboard'),
+        Uri.parse('${ApplicationConstant.baseUrl}/api/loan/dashboard?username=$username'),
         headers: {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $token',
@@ -78,7 +85,7 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
-        print('Response Body $response.body');
+        print('Response Body ${response.body}');
         setState(() {
           statsData['totalRequests'] =
               (data['totalRequests'] as num?)?.toInt() ?? 0;
@@ -111,9 +118,10 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
   Future<void> fetchMonthlyReport() async {
     try {
       final token = await JwtStorage.getToken();
+      final username = await JwtStorage.getUsername();
 
       final response = await http.get(
-        Uri.parse('${ApplicationConstant.baseUrl}/api/loan/monthly-report'),
+        Uri.parse('${ApplicationConstant.baseUrl}/api/loan/monthly-report?username=$username'),
         headers: {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $token',
@@ -1114,6 +1122,88 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
     );
   }
 
+  Future<void> _importExcelDirect(BuildContext context) async {
+    FilePickerResult? result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['csv', 'xlsx'],
+    );
+
+    if (result != null && result.files.single.path != null) {
+      String filePath = result.files.single.path!;
+      String fileName = result.files.single.name;
+      
+      dio.FormData formData = dio.FormData.fromMap({
+        'file': await dio.MultipartFile.fromFile(filePath, filename: fileName),
+      });
+
+      try {
+        final token = await JwtStorage.getToken();
+        final response = await dio.Dio().post(
+          'http://10.0.2.2:8080/api/loan/import-excel',
+          data: formData,
+          options: dio.Options(headers: {'Authorization': 'Bearer $token'}),
+        );
+
+        if (context.mounted) {
+          await _showAnimatedSuccessDialog('Excel file imported successfully!', 'Data has been imported to the system');
+        }
+      } catch (e) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Import failed: $e'), backgroundColor: Colors.red),
+          );
+        }
+      }
+    }
+  }
+
+  Future<void> _exportExcelDirect(BuildContext context) async {
+    try {
+      final token = await JwtStorage.getToken();
+      print('Starting download...');
+      
+      final response = await Dio().get(
+        'http://10.0.2.2:8080/api/loan/export-excel',
+        options: Options(
+          headers: {'Authorization': 'Bearer $token'},
+          responseType: ResponseType.bytes,
+        ),
+      );
+
+      print('Download response status: ${response.statusCode}');
+      
+      // Use app's external directory - always accessible
+      final appDir = await getExternalStorageDirectory();
+      final savePath = '${appDir!.path}/loan_requests.xlsx';
+      print('Saving to: $savePath');
+      
+      final file = File(savePath);
+      await file.writeAsBytes(response.data);
+      
+      final fileExists = await file.exists();
+      final fileSize = await file.length();
+      print('File created: $fileExists, Size: $fileSize bytes');
+      
+      if (context.mounted) {
+        await _showAnimatedSuccessDialog('Excel file downloaded successfully!', 'File saved to device storage');
+      }
+      
+      // Try to open with any available app
+      try {
+        await OpenFile.open(savePath);
+      } catch (e) {
+        print('Could not open file: $e');
+      }
+    } catch (e) {
+      print('Export error: $e');
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Export failed: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
   void _showInvestmentListDialog() async {
     final theme = Theme.of(context);
     final token = await JwtStorage.getToken();
@@ -1175,10 +1265,9 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
   }
 
   void _showPrioritySheetPopup(BuildContext context) async {
-    final controller = Get.put(LoanListController());
     final theme = Theme.of(context);
     await Get.bottomSheet(
-      _buildPrioritySheetBottomSheet(context, controller),
+      _buildPrioritySheetBottomSheet(context),
       backgroundColor: theme.colorScheme.surface,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
@@ -1186,8 +1275,7 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
     );
   }
 
-  Widget _buildPrioritySheetBottomSheet(
-      BuildContext context, LoanListController controller) {
+  Widget _buildPrioritySheetBottomSheet(BuildContext context) {
     final theme = Theme.of(context);
     return SafeArea(
       child: Padding(
@@ -1215,8 +1303,12 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
             const SizedBox(height: 24),
             ElevatedButton.icon(
               onPressed: () async {
-                await controller.importExcel(context);
-                Get.back();
+                Get.back(); // Close popup first
+                try {
+                  await _importExcelDirect(context);
+                } catch (e) {
+                  print('Import error: $e');
+                }
               },
               icon: Icon(Icons.upload_file, color: theme.colorScheme.onPrimary),
               label: Text(
@@ -1234,8 +1326,12 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
             const SizedBox(height: 12),
             ElevatedButton.icon(
               onPressed: () async {
-                await controller.exportExcel(context);
-                Get.back();
+                Get.back(); // Close popup first
+                try {
+                  await _exportExcelDirect(context);
+                } catch (e) {
+                  print('Export error: $e');
+                }
               },
               icon: Icon(Icons.download, color: theme.colorScheme.onPrimary),
               label: Text(
@@ -1257,6 +1353,173 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
                 'Cancel',
                 style: TextStyle(
                     color: theme.colorScheme.onSurface.withOpacity(0.7)),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showAnimatedSuccessDialog(String title, String message) async {
+    await Get.dialog(
+      _SuccessAnimationDialog(title: title, message: message),
+      barrierDismissible: false,
+      transitionDuration: const Duration(milliseconds: 300),
+      transitionCurve: Curves.easeInOut,
+    );
+  }
+}
+
+/// Animated Success Dialog Widget
+class _SuccessAnimationDialog extends StatefulWidget {
+  final String title;
+  final String message;
+  
+  const _SuccessAnimationDialog({required this.title, required this.message});
+
+  @override
+  State<_SuccessAnimationDialog> createState() => _SuccessAnimationDialogState();
+}
+
+class _SuccessAnimationDialogState extends State<_SuccessAnimationDialog>
+    with TickerProviderStateMixin {
+  late AnimationController _scaleController;
+  late AnimationController _checkController;
+  late AnimationController _textController;
+  late Animation<double> _scaleAnimation;
+  late Animation<double> _checkAnimation;
+  late Animation<double> _textAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+
+    _scaleController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 500),
+    );
+    _checkController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 600),
+    );
+    _textController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 400),
+    );
+
+    _scaleAnimation = CurvedAnimation(
+      parent: _scaleController,
+      curve: Curves.elasticOut,
+    );
+    _checkAnimation = CurvedAnimation(
+      parent: _checkController,
+      curve: Curves.easeInOut,
+    );
+    _textAnimation = CurvedAnimation(
+      parent: _textController,
+      curve: Curves.easeIn,
+    );
+
+    _scaleController.forward().then((_) {
+      _checkController.forward().then((_) {
+        _textController.forward();
+      });
+    });
+
+    Future.delayed(const Duration(milliseconds: 2500), () {
+      if (mounted && Get.isDialogOpen == true) {
+        Get.back();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _scaleController.dispose();
+    _checkController.dispose();
+    _textController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      elevation: 0,
+      child: Container(
+        padding: const EdgeInsets.all(32),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surface,
+          borderRadius: BorderRadius.circular(24),
+          boxShadow: [
+            BoxShadow(
+              color: theme.colorScheme.primary.withOpacity(0.3),
+              blurRadius: 30,
+              spreadRadius: 5,
+            ),
+          ],
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ScaleTransition(
+              scale: _scaleAnimation,
+              child: Container(
+                width: 100,
+                height: 100,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: theme.colorScheme.primary,
+                  boxShadow: [
+                    BoxShadow(
+                      color: theme.colorScheme.primary.withOpacity(0.4),
+                      blurRadius: 20,
+                      spreadRadius: 2,
+                    ),
+                  ],
+                ),
+                child: FadeTransition(
+                  opacity: _checkAnimation,
+                  child: Icon(
+                    Icons.check_rounded,
+                    color: theme.colorScheme.onPrimary,
+                    size: 60,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 28),
+            FadeTransition(
+              opacity: _textAnimation,
+              child: SlideTransition(
+                position: Tween<Offset>(
+                  begin: const Offset(0, 0.3),
+                  end: Offset.zero,
+                ).animate(_textAnimation),
+                child: Column(
+                  children: [
+                    Text(
+                      widget.title,
+                      style: TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold,
+                        color: theme.colorScheme.onSurface,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      widget.message,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: theme.colorScheme.onSurface.withOpacity(0.7),
+                        height: 1.5,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ],

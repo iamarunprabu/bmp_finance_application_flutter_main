@@ -83,17 +83,18 @@ class UpdateSuccessAnimationDialogState
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Dialog(
       backgroundColor: Colors.transparent,
       elevation: 0,
       child: Container(
         padding: const EdgeInsets.all(32),
         decoration: BoxDecoration(
-          color: const Color(0xFF252541),
+          color: theme.colorScheme.surface,
           borderRadius: BorderRadius.circular(24),
           boxShadow: [
             BoxShadow(
-              color: Colors.green.withOpacity(0.3),
+              color: theme.colorScheme.primary.withOpacity(0.3),
               blurRadius: 30,
               spreadRadius: 5,
             ),
@@ -110,14 +111,10 @@ class UpdateSuccessAnimationDialogState
                 height: 100,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  gradient: LinearGradient(
-                    colors: [Colors.green.shade400, Colors.green.shade700],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
+                  color: theme.colorScheme.primary,
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.green.withOpacity(0.4),
+                      color: theme.colorScheme.primary.withOpacity(0.4),
                       blurRadius: 20,
                       spreadRadius: 2,
                     ),
@@ -125,9 +122,9 @@ class UpdateSuccessAnimationDialogState
                 ),
                 child: FadeTransition(
                   opacity: _checkAnimation,
-                  child: const Icon(
+                  child: Icon(
                     Icons.check_rounded,
-                    color: Colors.white,
+                    color: theme.colorScheme.onPrimary,
                     size: 60,
                   ),
                 ),
@@ -146,12 +143,12 @@ class UpdateSuccessAnimationDialogState
                 ).animate(_textAnimation),
                 child: Column(
                   children: [
-                    const Text(
+                    Text(
                       'Updated Successfully!',
                       style: TextStyle(
                         fontSize: 22,
                         fontWeight: FontWeight.bold,
-                        color: Colors.white,
+                        color: theme.colorScheme.onSurface,
                       ),
                     ),
                     const SizedBox(height: 10),
@@ -160,7 +157,7 @@ class UpdateSuccessAnimationDialogState
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         fontSize: 14,
-                        color: Colors.white.withOpacity(0.7),
+                        color: theme.colorScheme.onSurface.withOpacity(0.7),
                         height: 1.5,
                       ),
                     ),
@@ -172,9 +169,9 @@ class UpdateSuccessAnimationDialogState
                       child: ClipRRect(
                         borderRadius: BorderRadius.circular(10),
                         child: LinearProgressIndicator(
-                          backgroundColor: Colors.white.withOpacity(0.1),
+                          backgroundColor: theme.colorScheme.onSurface.withOpacity(0.1),
                           valueColor: AlwaysStoppedAnimation<Color>(
-                            Colors.green.shade400,
+                            theme.colorScheme.primary,
                           ),
                           minHeight: 4,
                         ),

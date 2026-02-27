@@ -28,6 +28,16 @@ class LoanService {
     }
   }
 
+  /// 2a. Get ALL requests by username
+  Future<List<LoanRequestModel>> getAllRequestsByUsername(String username) async {
+    try {
+      final res = await _api.getWithAuth('$_basePath/requests/all?username=$username');
+      return _mapToList(res);
+    } catch (e) {
+      throw Exception('Failed to fetch all requests for user: $e');
+    }
+  }
+
   /// 2b. Get PENDING requests (Admin) — kept for backward compat
   Future<List<LoanRequestModel>> getPendingRequests() async {
     try {
@@ -48,17 +58,14 @@ class LoanService {
       // Build query string from non-null params
       final params = <String, String>{};
       if (status != null && status.isNotEmpty) params['status'] = status;
-      if (username != null && username.isNotEmpty)
-        params['username'] = username;
+      // Always add username parameter, even if empty
+      params['username'] = username ?? '';
 
       String url = '$_basePath/requests/filter';
-      if (params.isNotEmpty) {
-        final query = params.entries
-            .map((e) => '${e.key}=${Uri.encodeComponent(e.value)}')
-            .join('&');
-        url = '$url?$query';
-        print('API URL ADMIN $url');
-      }
+      final query = params.entries
+          .map((e) => '${e.key}=${Uri.encodeComponent(e.value)}')
+          .join('&');
+      url = '$url?$query';
 
       print('Filter URL: $url');
       final res = await _api.getWithAuth(url);

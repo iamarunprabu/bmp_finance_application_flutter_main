@@ -2,7 +2,6 @@ import 'dart:convert';
 import 'package:bmp_login/core/constant/applicationConstant.dart';
 import 'package:bmp_login/feature/authentication/model/plan_model.dart';
 import 'package:http/http.dart' as http;
-import '../../../../core/constant/api_client.dart';
 import '../../../../core/utils/jwt_storage.dart';
 
 class PlanService {

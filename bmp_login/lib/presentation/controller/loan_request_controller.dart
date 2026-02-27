@@ -7,7 +7,6 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import '../../../../core/utils/jwt_storage.dart';
 
-
 class LoanRequestController extends GetxController {
   final LoanService _loanService = LoanService();
   final PlanService _planService = PlanService();
@@ -166,8 +165,14 @@ class LoanRequestController extends GetxController {
       if (result['success'] == true) {
         await _showAnimatedSuccessDialog();
         clearForm();
-        // Navigate to loan list page
-        Get.offNamed('/loan-request-list');
+        // Navigate to loan list page showing all loans for current user
+        final username = await JwtStorage.getUsername();
+        Get.offNamed('/loan-request-list', arguments: {
+          'isAdmin': false,
+          'status': 'ALL',
+          'username': username,
+          'title': 'My Loan Requests',
+        });
       } else {
         _showSnackBar(
           'Request Failed',
@@ -296,17 +301,18 @@ class _SuccessAnimationDialogState extends State<_SuccessAnimationDialog>
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Dialog(
       backgroundColor: Colors.transparent,
       elevation: 0,
       child: Container(
         padding: const EdgeInsets.all(32),
         decoration: BoxDecoration(
-          color: const Color(0xFF252541),
+          color: theme.colorScheme.surface,
           borderRadius: BorderRadius.circular(24),
           boxShadow: [
             BoxShadow(
-              color: Colors.green.withOpacity(0.3),
+              color: theme.colorScheme.primary.withOpacity(0.3),
               blurRadius: 30,
               spreadRadius: 5,
             ),
@@ -323,14 +329,10 @@ class _SuccessAnimationDialogState extends State<_SuccessAnimationDialog>
                 height: 100,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  gradient: LinearGradient(
-                    colors: [Colors.green.shade400, Colors.green.shade700],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
+                  color: theme.colorScheme.primary,
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.green.withOpacity(0.4),
+                      color: theme.colorScheme.primary.withOpacity(0.4),
                       blurRadius: 20,
                       spreadRadius: 2,
                     ),
@@ -338,9 +340,9 @@ class _SuccessAnimationDialogState extends State<_SuccessAnimationDialog>
                 ),
                 child: FadeTransition(
                   opacity: _checkAnimation,
-                  child: const Icon(
+                  child: Icon(
                     Icons.check_rounded,
-                    color: Colors.white,
+                    color: theme.colorScheme.onPrimary,
                     size: 60,
                   ),
                 ),
@@ -358,12 +360,12 @@ class _SuccessAnimationDialogState extends State<_SuccessAnimationDialog>
                 ).animate(_textAnimation),
                 child: Column(
                   children: [
-                    const Text(
+                    Text(
                       'Saved Successfully!',
                       style: TextStyle(
                         fontSize: 22,
                         fontWeight: FontWeight.bold,
-                        color: Colors.white,
+                        color: theme.colorScheme.onSurface,
                       ),
                     ),
                     const SizedBox(height: 10),
@@ -372,7 +374,7 @@ class _SuccessAnimationDialogState extends State<_SuccessAnimationDialog>
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         fontSize: 14,
-                        color: Colors.white.withOpacity(0.7),
+                        color: theme.colorScheme.onSurface.withOpacity(0.7),
                         height: 1.5,
                       ),
                     ),
@@ -383,9 +385,9 @@ class _SuccessAnimationDialogState extends State<_SuccessAnimationDialog>
                       child: ClipRRect(
                         borderRadius: BorderRadius.circular(10),
                         child: LinearProgressIndicator(
-                          backgroundColor: Colors.white.withOpacity(0.1),
+                          backgroundColor: theme.colorScheme.onSurface.withOpacity(0.1),
                           valueColor: AlwaysStoppedAnimation<Color>(
-                            Colors.green.shade400,
+                            theme.colorScheme.primary,
                           ),
                           minHeight: 4,
                         ),
@@ -400,6 +402,4 @@ class _SuccessAnimationDialogState extends State<_SuccessAnimationDialog>
       ),
     );
   }
-  
- 
 }
