@@ -9,6 +9,7 @@ class UserLoginScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final AuthController controller = Get.put(AuthController());
     final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
 
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,

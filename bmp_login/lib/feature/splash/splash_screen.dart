@@ -44,9 +44,11 @@ class _SplashScreenState extends State<SplashScreen>
   Widget build(BuildContext context) {
     final size = MediaQuery.of(context).size;
     final animationSize = size.width * 0.7;
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
 
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: theme.scaffoldBackgroundColor,
       body: SafeArea(
         child: Center(
           child: Column(
@@ -72,7 +74,7 @@ class _SplashScreenState extends State<SplashScreen>
                 style: TextStyle(
                   fontSize: size.width * 0.07,
                   fontWeight: FontWeight.bold,
-                  color: Colors.deepPurple,
+                  color: isDark ? const Color(0xFF6366F1) : Colors.deepPurple,
                   letterSpacing: 1.5,
                 ),
               ),
@@ -81,7 +83,7 @@ class _SplashScreenState extends State<SplashScreen>
                 'Loading...',
                 style: TextStyle(
                   fontSize: size.width * 0.035,
-                  color: Colors.grey,
+                  color: isDark ? Colors.white70 : Colors.grey,
                 ),
               ),
             ],

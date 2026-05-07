@@ -5,6 +5,8 @@ class JwtStorage {
   static const String _tokenKey = 'jwt_token';
   static const String _refreshTokenKey = 'refresh_token';
   static const String _userRoleKey = 'user_role';
+  static const String _usernameKey = 'saved_username';
+  static const String _passwordKey = 'saved_password';
 
   // ================= SAVE METHODS =================
 
@@ -26,6 +28,13 @@ class JwtStorage {
     await prefs.setString(_userRoleKey, role);
   }
 
+  // Save credentials
+  static Future<void> saveCredentials(String username, String password) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_usernameKey, username);
+    await prefs.setString(_passwordKey, password);
+  }
+
   // ================= GET METHODS =================
 
   // Get JWT token
@@ -44,6 +53,18 @@ class JwtStorage {
   static Future<String?> getUserRole() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getString(_userRoleKey);
+  }
+
+  // Get saved username
+  static Future<String?> getSavedUsername() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_usernameKey);
+  }
+
+  // Get saved password
+  static Future<String?> getSavedPassword() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_passwordKey);
   }
 
   // ================= VALIDATION =================

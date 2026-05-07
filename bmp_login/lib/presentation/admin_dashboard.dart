@@ -3,7 +3,6 @@ import 'package:bmp_login/core/utils/jwt_storage.dart';
 import 'package:bmp_login/core/utils/riverpod_provider.dart';
 import 'package:bmp_login/feature/authentication/model/monthly_report_model.dart';
 import 'package:bmp_login/feature/authentication/screen/controller/auth_controller.dart';
-//import 'package:bmp_login/feature/authentication/screen/controller/loan_request_pagination_controller.dart';
 import 'package:bmp_login/presentation/controller/loan_list_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:responsive_builder/responsive_builder.dart';
@@ -33,16 +32,19 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
   final ScrollController _loanListScrollController = ScrollController();
   // Data variables
   bool isLoading = true;
-  List<double> weeklySalesData = [342, 0, 1918, 0, 3680, 0, 0]; // Default data
+  List<double> totalLoanData = [];
+  List<double> approvedData = [];
+  List<double> pendingData = [];
+  List<double> rejectedData = [];
   Map<String, dynamic> statsData = {
-    'salesTotal': 30117.0,
-    'avgOrder': 66654.0,
-    'totalOrders': 46,
-    'visitors': 39,
-    'salesPercentage': '+25%',
-    'avgOrderPercentage': '-15%',
-    'ordersPercentage': '+44%',
-    'visitorsPercentage': '+2%',
+    'salesTotal': 0.0,
+    'avgOrder': 0.0,
+    'totalOrders': 0,
+    'visitors': 0,
+    'salesPercentage': '',
+    'avgOrderPercentage': '',
+    'ordersPercentage': '',
+    'visitorsPercentage': '',
   };
   Map<String, int> ordersStatusData = {
     'completed': 26,
@@ -61,10 +63,10 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
     setState(() {
       isLoading = true;
     });
-    
+
     await fetchDashboardStats();
     await fetchMonthlyReport();
-    
+
     setState(() {
       isLoading = false;
     });
@@ -73,10 +75,9 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
   Future<void> fetchDashboardStats() async {
     try {
       final token = await JwtStorage.getToken();
-      final username = await JwtStorage.getUsername();
 
       final response = await http.get(
-        Uri.parse('${ApplicationConstant.baseUrl}/api/loan/dashboard?username=$username'),
+        Uri.parse('${ApplicationConstant.baseUrl}/api/loan/dashboard'),
         headers: {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $token',
@@ -85,7 +86,7 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
-        print('Response Body ${response.body}');
+        print('Admin Dashboard Response: ${response.body}');
         setState(() {
           statsData['totalRequests'] =
               (data['totalRequests'] as num?)?.toInt() ?? 0;
@@ -113,15 +114,57 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
     } catch (e) {
       print("Dashboard error: $e");
     }
+
+    // Fetch investment total
+    await fetchInvestmentTotal();
+  }
+
+  Future<void> fetchInvestmentTotal() async {
+    try {
+      final token = await JwtStorage.getToken();
+      final now = DateTime.now();
+
+      final uri = Uri.parse('${ApplicationConstant.baseUrl}/api/investment/all')
+          .replace(
+        queryParameters: {
+          'month': now.month.toString(),
+          'year': now.year.toString(),
+        },
+      );
+
+      final response = await http.get(
+        uri,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final List<dynamic> data = json.decode(response.body);
+
+        // Calculate total investment amount
+        double totalInvestment = 0.0;
+        for (var item in data) {
+          totalInvestment +=
+              (item['inversmentAmt'] ?? item['amount'] ?? 0).toDouble();
+        }
+
+        setState(() {
+          statsData['salesTotal'] = totalInvestment;
+        });
+      }
+    } catch (e) {
+      print("Investment total error: $e");
+    }
   }
 
   Future<void> fetchMonthlyReport() async {
     try {
       final token = await JwtStorage.getToken();
-      final username = await JwtStorage.getUsername();
 
       final response = await http.get(
-        Uri.parse('${ApplicationConstant.baseUrl}/api/loan/monthly-report?username=$username'),
+        Uri.parse('${ApplicationConstant.baseUrl}/api/loan/monthly-report'),
         headers: {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $token',
@@ -130,14 +173,23 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
 
       if (response.statusCode == 200) {
         final jsonData = json.decode(response.body);
-        print('Monthly Report: $jsonData');
+        print('Admin Monthly Report: $jsonData');
 
         final monthlyReport = MonthlyReportResponse.fromJson(jsonData);
 
         setState(() {
-          // Update bar chart with total loan amounts
-          weeklySalesData =
+          // Store data for multiple lines
+          totalLoanData =
               monthlyReport.data.map((item) => item.totalLoanAmount).toList();
+          approvedData = monthlyReport.data
+              .map((item) => item.approvedCount.toDouble())
+              .toList();
+          pendingData = monthlyReport.data
+              .map((item) => item.pendingCount.toDouble())
+              .toList();
+          rejectedData = monthlyReport.data
+              .map((item) => item.rejectedCount.toDouble())
+              .toList();
 
           // Calculate totals for pie chart
           int totalApproved = 0;
@@ -205,12 +257,11 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
                           ),
                           const SizedBox(height: 20),
                           _buildStatsCards(),
-                          const SizedBox(height: 20),
-                          _buildWeeklySalesChart(),
+                          // const SizedBox(height: 20),
+                          // _buildWeeklySalesChart(),
                           const SizedBox(height: 20),
                           _buildOrdersStatusChart(),
                           const SizedBox(height: 32),
-                          // _buildPaginatedLoanRequestList(),
                         ],
                       ),
                     ),
@@ -322,7 +373,8 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
                     future: JwtStorage.getUsername(),
                     builder: (context, snapshot) {
                       final username = snapshot.data ?? 'Admin';
-                      final firstLetter = username.isNotEmpty ? username[0].toUpperCase() : 'A';
+                      final firstLetter =
+                          username.isNotEmpty ? username[0].toUpperCase() : 'A';
 
                       return Row(
                         children: [
@@ -381,6 +433,11 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
                     Icons.dashboard_outlined,
                     'Dashboard',
                     selectedMenu == 'Dashboard',
+                  ),
+                  _buildMenuItem(
+                    Icons.people_outline,
+                    'User List',
+                    selectedMenu == 'User List',
                   ),
                   _buildMenuItem(
                     Icons.check_circle_outline,
@@ -494,6 +551,9 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
 
           if (title == 'Investment List') {
             _showInvestmentListDialog();
+          } else if (title == 'User List') {
+            print('Navigating to User List');
+            Get.toNamed('/user-list');
           } else if (title == 'Pending Loans') {
             print('Navigating to Pending Loans');
             Get.toNamed(
@@ -538,49 +598,72 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
 
   Widget _buildTopBar() {
     final theme = Theme.of(context);
-    return Container(
-      height: 60,
-      color: theme.colorScheme.primary,
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Row(
-        children: [
-          IconButton(
-            icon: const Icon(Icons.menu, size: 24),
-            color: Colors.white,
-            onPressed: () {
-              _scaffoldKey.currentState?.openDrawer();
-            },
-          ),
-          const SizedBox(width: 8),
-          Container(
-            width: 36,
-            height: 36,
-            decoration: BoxDecoration(
+    return SafeArea(
+      child: Container(
+        height: 60,
+        color: theme.colorScheme.primary,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            IconButton(
+              icon: const Icon(Icons.menu, size: 24),
               color: Colors.white,
-              shape: BoxShape.circle,
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(),
+              onPressed: () {
+                _scaffoldKey.currentState?.openDrawer();
+              },
             ),
-            child: Center(
-              child: Text(
-                'B',
-                style: TextStyle(
-                  color: theme.colorScheme.primary,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 20,
-                ),
+            const SizedBox(width: 12),
+            TweenAnimationBuilder<double>(
+              tween: Tween(begin: 0.0, end: 1.0),
+              duration: const Duration(milliseconds: 800),
+              curve: Curves.elasticOut,
+              builder: (context, value, child) {
+                return Transform.scale(
+                  scale: value,
+                  child: Transform.rotate(
+                    angle: (1 - value) * 2,
+                    child: Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.2),
+                            blurRadius: 8,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      padding: const EdgeInsets.all(6),
+                      child: ClipOval(
+                        child: Image.asset(
+                          'assets/images/bmp.png',
+                          fit: BoxFit.cover,
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+            const SizedBox(width: 12),
+            const Text(
+              'BMP',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.w600,
+                color: Colors.white,
+                letterSpacing: 0.5,
               ),
             ),
-          ),
-          const SizedBox(width: 12),
-          Text(
-            'BMP',
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.w600,
-              color: Colors.white,
-            ),
-          ),
-          const Spacer(),
-        ],
+            const Spacer(),
+          ],
+        ),
       ),
     );
   }
@@ -592,15 +675,16 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
         Row(
           children: [
             Expanded(
-              child: _buildStatCard(
-                title: 'Inverstment Amount',
-                value: '₹${statsData['salesTotal'].toStringAsFixed(0)}',
-                percentage: statsData['salesPercentage'],
-                color: const Color(0xFF10B981),
-                icon: Icons.currency_rupee,
-                isPositive: statsData['salesPercentage'].toString().startsWith(
-                      '+',
-                    ),
+              child: GestureDetector(
+                onTap: _showInvestmentListDialog,
+                child: _buildStatCard(
+                  title: 'Inverstment Amount',
+                  value: '₹${statsData['salesTotal'].toStringAsFixed(0)}',
+                  percentage: '',
+                  color: const Color(0xFF10B981),
+                  icon: Icons.currency_rupee,
+                  isPositive: true,
+                ),
               ),
             ),
             const SizedBox(width: 12),
@@ -608,12 +692,10 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
               child: _buildStatCard(
                 title: 'Loan Amount',
                 value: formatCurrency(statsData['totalLoanRequestAmount']),
-
-                percentage: statsData['avgOrderPercentage'],
-                color: const Color(0xFF10B981), // green → money inflow
+                percentage: '',
+                color: const Color(0xFF10B981),
                 icon: Icons.trending_up,
-                isPositive:
-                    statsData['avgOrderPercentage'].toString().startsWith('+'),
+                isPositive: true,
               ),
             ),
           ],
@@ -622,15 +704,26 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
         Row(
           children: [
             Expanded(
-              child: _buildStatCard(
-                title: 'Approved Loans',
-                value: formatCount(statsData['approvedCount']),
-                percentage: statsData['ordersPercentage'],
-                color: const Color(0xFF8B5CF6), // purple → authority / approval
-                icon: Icons.verified_outlined,
-                isPositive: statsData['ordersPercentage'].toString().startsWith(
-                      '+',
-                    ),
+              child: GestureDetector(
+                onTap: () {
+                  Get.toNamed(
+                    '/loan-request-list',
+                    arguments: {
+                      'isAdmin': true,
+                      'status': 'APPROVED',
+                      'title': 'Approved Loans',
+                    },
+                    preventDuplicates: false,
+                  );
+                },
+                child: _buildStatCard(
+                  title: 'Approved Loans',
+                  value: formatCount(statsData['approvedCount']),
+                  percentage: '',
+                  color: const Color(0xFF8B5CF6),
+                  icon: Icons.verified_outlined,
+                  isPositive: true,
+                ),
               ),
             ),
             const SizedBox(width: 12),
@@ -650,14 +743,10 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
                 child: _buildStatCard(
                   title: 'Pending Loans',
                   value: formatCount(statsData['totalPendingCount']),
-                  percentage: statsData['visitorsPercentage'],
-                  color: const Color(
-                    0xFFF97316,
-                  ), // orange → pending / attention
+                  percentage: '',
+                  color: const Color(0xFFF97316),
                   icon: Icons.hourglass_bottom,
-                  isPositive: statsData['visitorsPercentage']
-                      .toString()
-                      .startsWith('+'),
+                  isPositive: true,
                 ),
               ),
             ),
@@ -720,25 +809,27 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
                 ),
                 child: Icon(icon, color: color, size: 20),
               ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-                decoration: BoxDecoration(
-                  color: isPositive
-                      ? const Color(0xFF10B981).withOpacity(0.1)
-                      : const Color(0xFFEF4444).withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: Text(
-                  percentage,
-                  style: TextStyle(
-                    fontSize: 10,
+              if (percentage.isNotEmpty)
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                  decoration: BoxDecoration(
                     color: isPositive
-                        ? const Color(0xFF10B981)
-                        : const Color(0xFFEF4444),
-                    fontWeight: FontWeight.w600,
+                        ? const Color(0xFF10B981).withOpacity(0.1)
+                        : const Color(0xFFEF4444).withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(
+                    percentage,
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: isPositive
+                          ? const Color(0xFF10B981)
+                          : const Color(0xFFEF4444),
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
-              ),
             ],
           ),
           const SizedBox(height: 12),
@@ -766,10 +857,11 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
 
   Widget _buildWeeklySalesChart() {
     final theme = Theme.of(context);
-    // Calculate max value dynamically
-    final maxValue = weeklySalesData.isEmpty
-        ? 4000.0
-        : (weeklySalesData.reduce((a, b) => a > b ? a : b) * 1.2);
+    // Calculate max value from all data series
+    final allValues = [...approvedData, ...pendingData, ...rejectedData];
+    final maxValue = allValues.isEmpty
+        ? 100.0
+        : (allValues.reduce((a, b) => a > b ? a : b) * 1.2);
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -812,35 +904,39 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
               ),
             ],
           ),
+          const SizedBox(height: 16),
+          // Legend
+          Wrap(
+            spacing: 16,
+            runSpacing: 8,
+            children: [
+              _buildChartLegend(const Color(0xFF10B981), 'Approved'),
+              _buildChartLegend(const Color(0xFFFBBF24), 'Pending'),
+              _buildChartLegend(const Color(0xFFEF4444), 'Rejected'),
+            ],
+          ),
           const SizedBox(height: 20),
           SizedBox(
             height: 220,
-            child: weeklySalesData.isEmpty
+            child: approvedData.isEmpty
                 ? Center(
                     child: Text(
                       'No data available',
                       style: TextStyle(color: Colors.grey[600]),
                     ),
                   )
-                : BarChart(
-                    BarChartData(
-                      alignment: BarChartAlignment.spaceAround,
-                      maxY: maxValue,
-                      minY: 0,
-                      barTouchData: BarTouchData(
-                        enabled: true,
-                        touchTooltipData: BarTouchTooltipData(
-                          getTooltipColor: (group) => theme.colorScheme.primary,
-                          getTooltipItem: (group, groupIndex, rod, rodIndex) {
-                            return BarTooltipItem(
-                              '₹${rod.toY.toStringAsFixed(0)}',
-                              const TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            );
-                          },
-                        ),
+                : LineChart(
+                    LineChartData(
+                      gridData: FlGridData(
+                        show: true,
+                        drawVerticalLine: false,
+                        horizontalInterval: maxValue / 4,
+                        getDrawingHorizontalLine: (value) {
+                          return FlLine(
+                            color: theme.colorScheme.onSurface.withOpacity(0.1),
+                            strokeWidth: 1,
+                          );
+                        },
                       ),
                       titlesData: FlTitlesData(
                         show: true,
@@ -860,10 +956,10 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
                                 'Sep',
                                 'Oct',
                                 'Nov',
-                                'Dec',
+                                'Dec'
                               ];
                               if (value.toInt() >= 0 &&
-                                  value.toInt() < weeklySalesData.length) {
+                                  value.toInt() < approvedData.length) {
                                 return Padding(
                                   padding: const EdgeInsets.only(top: 6),
                                   child: Text(
@@ -886,54 +982,107 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
                         leftTitles: AxisTitles(
                           sideTitles: SideTitles(
                             showTitles: true,
-                            reservedSize: 45,
+                            reservedSize: 35,
                             interval: maxValue / 4,
                             getTitlesWidget: (value, meta) {
-                              if (value == 0) {
-                                return Text(
-                                  '0',
+                              if (value == 0)
+                                return Text('0',
+                                    style: TextStyle(
+                                        fontSize: 10,
+                                        color: theme.colorScheme.onSurface
+                                            .withOpacity(0.6)));
+                              return Text('${value.toInt()}',
                                   style: TextStyle(
-                                    fontSize: 10,
-                                    color: theme.colorScheme.onSurface
-                                        .withOpacity(0.6),
-                                  ),
-                                );
-                              }
-                              return Text(
-                                '₹${(value / 1000).toStringAsFixed(0)}K',
-                                style: TextStyle(
-                                  fontSize: 10,
-                                  color: theme.colorScheme.onSurface
-                                      .withOpacity(0.6),
-                                ),
-                              );
+                                      fontSize: 10,
+                                      color: theme.colorScheme.onSurface
+                                          .withOpacity(0.6)));
                             },
                           ),
                         ),
                         topTitles: const AxisTitles(
-                          sideTitles: SideTitles(showTitles: false),
-                        ),
+                            sideTitles: SideTitles(showTitles: false)),
                         rightTitles: const AxisTitles(
-                          sideTitles: SideTitles(showTitles: false),
-                        ),
-                      ),
-                      gridData: FlGridData(
-                        show: true,
-                        drawVerticalLine: false,
-                        horizontalInterval: maxValue / 4,
-                        getDrawingHorizontalLine: (value) {
-                          return FlLine(
-                            color: theme.colorScheme.onSurface.withOpacity(0.1),
-                            strokeWidth: 1,
-                          );
-                        },
+                            sideTitles: SideTitles(showTitles: false)),
                       ),
                       borderData: FlBorderData(show: false),
-                      barGroups: List.generate(
-                        weeklySalesData.length,
-                        (index) =>
-                            _buildBarGroup(index, weeklySalesData[index]),
+                      minX: 0,
+                      maxX: (approvedData.length - 1).toDouble(),
+                      minY: 0,
+                      maxY: maxValue,
+                      lineTouchData: LineTouchData(
+                        enabled: true,
+                        touchTooltipData: LineTouchTooltipData(
+                          getTooltipColor: (touchedSpot) => Colors.black87,
+                        ),
                       ),
+                      lineBarsData: [
+                        // Approved line (green)
+                        LineChartBarData(
+                          spots: List.generate(
+                              approvedData.length,
+                              (index) => FlSpot(
+                                  index.toDouble(), approvedData[index])),
+                          isCurved: true,
+                          color: const Color(0xFF10B981),
+                          barWidth: 2.5,
+                          isStrokeCapRound: true,
+                          dotData: FlDotData(
+                            show: true,
+                            getDotPainter: (spot, percent, barData, index) {
+                              return FlDotCirclePainter(
+                                radius: 3,
+                                color: const Color(0xFF10B981),
+                                strokeWidth: 0,
+                              );
+                            },
+                          ),
+                          belowBarData: BarAreaData(show: false),
+                        ),
+                        // Pending line (yellow)
+                        LineChartBarData(
+                          spots: List.generate(
+                              pendingData.length,
+                              (index) =>
+                                  FlSpot(index.toDouble(), pendingData[index])),
+                          isCurved: true,
+                          color: const Color(0xFFFBBF24),
+                          barWidth: 2.5,
+                          isStrokeCapRound: true,
+                          dotData: FlDotData(
+                            show: true,
+                            getDotPainter: (spot, percent, barData, index) {
+                              return FlDotCirclePainter(
+                                radius: 3,
+                                color: const Color(0xFFFBBF24),
+                                strokeWidth: 0,
+                              );
+                            },
+                          ),
+                          belowBarData: BarAreaData(show: false),
+                        ),
+                        // Rejected line (red)
+                        LineChartBarData(
+                          spots: List.generate(
+                              rejectedData.length,
+                              (index) => FlSpot(
+                                  index.toDouble(), rejectedData[index])),
+                          isCurved: true,
+                          color: const Color(0xFFEF4444),
+                          barWidth: 2.5,
+                          isStrokeCapRound: true,
+                          dotData: FlDotData(
+                            show: true,
+                            getDotPainter: (spot, percent, barData, index) {
+                              return FlDotCirclePainter(
+                                radius: 3,
+                                color: const Color(0xFFEF4444),
+                                strokeWidth: 0,
+                              );
+                            },
+                          ),
+                          belowBarData: BarAreaData(show: false),
+                        ),
+                      ],
                     ),
                   ),
           ),
@@ -942,18 +1091,25 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
     );
   }
 
-  BarChartGroupData _buildBarGroup(int x, double value) {
-    final theme = Theme.of(context);
-    return BarChartGroupData(
-      x: x,
-      barRods: [
-        BarChartRodData(
-          toY: value,
-          color: theme.colorScheme.primary,
-          width: 16,
-          borderRadius: const BorderRadius.only(
-            topLeft: Radius.circular(4),
-            topRight: Radius.circular(4),
+  Widget _buildChartLegend(Color color, String label) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 12,
+          height: 12,
+          decoration: BoxDecoration(
+            color: color,
+            shape: BoxShape.circle,
+          ),
+        ),
+        const SizedBox(width: 6),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            color: Colors.grey[600],
+            fontWeight: FontWeight.w500,
           ),
         ),
       ],
@@ -1013,7 +1169,7 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
                 sections: [
                   PieChartSectionData(
                     value: ordersStatusData['completed']!.toDouble(),
-                    color: theme.colorScheme.primary,
+                    color: const Color(0xFF10B981),
                     title: '${ordersStatusData['completed']}',
                     radius: 45,
                     titleStyle: const TextStyle(
@@ -1024,7 +1180,7 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
                   ),
                   PieChartSectionData(
                     value: ordersStatusData['pending']!.toDouble(),
-                    color: const Color(0xFF10B981),
+                    color: const Color(0xFFFBBF24),
                     title: '${ordersStatusData['pending']}',
                     radius: 45,
                     titleStyle: const TextStyle(
@@ -1035,7 +1191,7 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
                   ),
                   PieChartSectionData(
                     value: ordersStatusData['processing']!.toDouble(),
-                    color: const Color(0xFFF97316),
+                    color: const Color(0xFFEF4444),
                     title: '${ordersStatusData['processing']}',
                     radius: 45,
                     titleStyle: const TextStyle(
@@ -1046,7 +1202,7 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
                   ),
                   PieChartSectionData(
                     value: ordersStatusData['cancelled']!.toDouble(),
-                    color: const Color(0xFF8B5CF6),
+                    color: const Color(0xFF3B82F6),
                     title: '${ordersStatusData['cancelled']}',
                     radius: 45,
                     titleStyle: const TextStyle(
@@ -1065,22 +1221,22 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
             runSpacing: 12,
             children: [
               _buildLegendItem(
-                theme.colorScheme.primary,
+                const Color(0xFF10B981),
                 'Completed',
                 '${ordersStatusData['completed']}',
               ),
               _buildLegendItem(
-                const Color(0xFF10B981),
+                const Color(0xFFFBBF24),
                 'Pending',
                 '${ordersStatusData['pending']}',
               ),
               _buildLegendItem(
-                const Color(0xFFF97316),
-                'rejected',
+                const Color(0xFFEF4444),
+                'Rejected',
                 '${ordersStatusData['processing']}',
               ),
               _buildLegendItem(
-                const Color(0xFF8B5CF6),
+                const Color(0xFF3B82F6),
                 'Cancelled',
                 '${ordersStatusData['cancelled']}',
               ),
@@ -1131,7 +1287,7 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
     if (result != null && result.files.single.path != null) {
       String filePath = result.files.single.path!;
       String fileName = result.files.single.name;
-      
+
       dio.FormData formData = dio.FormData.fromMap({
         'file': await dio.MultipartFile.fromFile(filePath, filename: fileName),
       });
@@ -1139,18 +1295,21 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
       try {
         final token = await JwtStorage.getToken();
         final response = await dio.Dio().post(
-          'http://10.0.2.2:8080/api/loan/import-excel',
+          '${ApplicationConstant.baseUrl}/api/loan/import-excel',
           data: formData,
           options: dio.Options(headers: {'Authorization': 'Bearer $token'}),
         );
 
         if (context.mounted) {
-          await _showAnimatedSuccessDialog('Excel file imported successfully!', 'Data has been imported to the system');
+          await _showAnimatedSuccessDialog('Excel file imported successfully!',
+              'Data has been imported to the system');
         }
       } catch (e) {
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Import failed: $e'), backgroundColor: Colors.red),
+            SnackBar(
+                content: Text('Import failed: $e'),
+                backgroundColor: Colors.red),
           );
         }
       }
@@ -1161,9 +1320,9 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
     try {
       final token = await JwtStorage.getToken();
       print('Starting download...');
-      
+
       final response = await Dio().get(
-        'http://10.0.2.2:8080/api/loan/export-excel',
+        '${ApplicationConstant.baseUrl}/api/loan/export-excel',
         options: Options(
           headers: {'Authorization': 'Bearer $token'},
           responseType: ResponseType.bytes,
@@ -1171,23 +1330,24 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
       );
 
       print('Download response status: ${response.statusCode}');
-      
+
       // Use app's external directory - always accessible
       final appDir = await getExternalStorageDirectory();
       final savePath = '${appDir!.path}/loan_requests.xlsx';
       print('Saving to: $savePath');
-      
+
       final file = File(savePath);
       await file.writeAsBytes(response.data);
-      
+
       final fileExists = await file.exists();
       final fileSize = await file.length();
       print('File created: $fileExists, Size: $fileSize bytes');
-      
+
       if (context.mounted) {
-        await _showAnimatedSuccessDialog('Excel file downloaded successfully!', 'File saved to device storage');
+        await _showAnimatedSuccessDialog('Excel file downloaded successfully!',
+            'File saved to device storage');
       }
-      
+
       // Try to open with any available app
       try {
         await OpenFile.open(savePath);
@@ -1198,7 +1358,8 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
       print('Export error: $e');
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Export failed: $e'), backgroundColor: Colors.red),
+          SnackBar(
+              content: Text('Export failed: $e'), backgroundColor: Colors.red),
         );
       }
     }
@@ -1206,61 +1367,321 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
 
   void _showInvestmentListDialog() async {
     final theme = Theme.of(context);
+    final now = DateTime.now();
+    final month = now.month;
+    final year = now.year;
     final token = await JwtStorage.getToken();
 
+    print('Calling investment API with month: $month, year: $year');
+
+    // Show loading dialog first
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const AlertDialog(
+        content: Row(
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(width: 16),
+            Text('Loading investments...'),
+          ],
+        ),
+      ),
+    );
+
     try {
+      final uri = Uri.parse('${ApplicationConstant.baseUrl}/api/investment/all')
+          .replace(
+        queryParameters: {
+          'month': month.toString(),
+          'year': year.toString(),
+        },
+      );
+
+      print('Final URL: $uri');
+
       final response = await http.get(
-        Uri.parse('${ApplicationConstant.baseUrl}/api/investment/all'),
+        uri,
         headers: {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $token',
         },
       );
 
+      Navigator.pop(context); // Close loading dialog
+
       if (response.statusCode == 200) {
         final List<dynamic> data = json.decode(response.body);
-        showDialog(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: Row(
-              children: [
-                Icon(Icons.account_balance_wallet, color: theme.colorScheme.primary),
-                const SizedBox(width: 8),
-                const Text('Investment List'),
-              ],
-            ),
-            content: SizedBox(
-              width: double.maxFinite,
-              child: SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: DataTable(
-                  columns: const [
-                    DataColumn(label: Text('Username')),
-                    DataColumn(label: Text('Amount')),
-                  ],
-                  rows: data.map((item) {
-                    return DataRow(cells: [
-                      DataCell(Text(item['username'] ?? '')),
-                      DataCell(Text('₹${item['amount']}')),
-                    ]);
-                  }).toList(),
-                ),
+        print('Received data: $data'); // Debug log
+        _showInvestmentDataDialog(data, month, year, theme);
+      } else {
+        print('API Error: ${response.statusCode} - ${response.body}');
+        Get.snackbar(
+            'Error', 'Failed to load investments: ${response.statusCode}');
+      }
+    } catch (e) {
+      Navigator.pop(context); // Close loading dialog
+      print('Investment list error: $e');
+      Get.snackbar('Error', 'Failed to load investments: $e');
+    }
+  }
+
+  void _showInvestmentDataDialog(
+      List<dynamic> data, int month, int year, ThemeData theme) {
+    final monthNames = [
+      '',
+      'January',
+      'February',
+      'March',
+      'April',
+      'May',
+      'June',
+      'July',
+      'August',
+      'September',
+      'October',
+      'November',
+      'December'
+    ];
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(Icons.account_balance_wallet,
+                color: theme.colorScheme.primary),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Investment List - ${monthNames[month]} $year',
+                style: const TextStyle(fontSize: 16),
               ),
             ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Close'),
+          ],
+        ),
+        content: SizedBox(
+          width: double.maxFinite,
+          height: 400,
+          child: Column(
+            children: [
+              // Custom table header
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.primary.withOpacity(0.1),
+                  borderRadius: const BorderRadius.only(
+                    topLeft: Radius.circular(8),
+                    topRight: Radius.circular(8),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      flex: 2,
+                      child: Text(
+                        'Partner Name',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                          color: theme.colorScheme.primary,
+                        ),
+                      ),
+                    ),
+                    Expanded(
+                      flex: 2,
+                      child: Text(
+                        'Investment Amount',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                          color: theme.colorScheme.primary,
+                        ),
+                        textAlign: TextAlign.right,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              // Table body
+              Expanded(
+                child: Container(
+                  decoration: BoxDecoration(
+                    border: Border.all(color: Colors.grey.shade300),
+                    borderRadius: const BorderRadius.only(
+                      bottomLeft: Radius.circular(8),
+                      bottomRight: Radius.circular(8),
+                    ),
+                  ),
+                  child: data.isEmpty
+                      ? const Center(
+                          child: Text(
+                            'No investments found',
+                            style: TextStyle(color: Colors.grey),
+                          ),
+                        )
+                      : ListView.separated(
+                          itemCount: data.length,
+                          separatorBuilder: (context, index) => Divider(
+                            height: 1,
+                            color: Colors.grey.shade200,
+                          ),
+                          itemBuilder: (context, index) {
+                            final item = data[index];
+                            return Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 12,
+                              ),
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    flex: 2,
+                                    child: Text(
+                                      item['createdBy'] ??
+                                          item['partnerName'] ??
+                                          item['username'] ??
+                                          'N/A',
+                                      style: const TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                  ),
+                                  Expanded(
+                                    flex: 2,
+                                    child: Text(
+                                      '₹${(item['inversmentAmt'] ?? item['amount'] ?? 0).toString()}',
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w600,
+                                        color: theme.colorScheme.primary,
+                                      ),
+                                      textAlign: TextAlign.right,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                        ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: () => _downloadInvestmentPDF(month, year),
+                  icon: const Icon(Icons.picture_as_pdf),
+                  label: const Text('Download as PDF'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: theme.colorScheme.primary,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                ),
               ),
             ],
           ),
-        );
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _downloadInvestmentPDF(int month, int year) async {
+    try {
+      final token = await JwtStorage.getToken();
+
+      print('Downloading PDF for month: $month, year: $year');
+
+      // Show loading indicator
+      Get.dialog(
+        const AlertDialog(
+          content: Row(
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(width: 16),
+              Text('Generating PDF...'),
+            ],
+          ),
+        ),
+        barrierDismissible: false,
+      );
+
+      final url =
+          '${ApplicationConstant.baseUrl}/api/investment/report/pdf?month=$month&year=$year';
+      print('PDF URL: $url');
+
+      final response = await Dio().get(
+        url,
+        options: Options(
+          headers: {'Authorization': 'Bearer $token'},
+          responseType: ResponseType.bytes,
+          validateStatus: (status) => status! < 600,
+        ),
+      );
+
+      Get.back(); // Close loading dialog
+
+      print('PDF Response status: ${response.statusCode}');
+      print('PDF Response size: ${response.data?.length ?? 0} bytes');
+
+      if (response.statusCode == 200) {
+        if (response.data != null && response.data.length > 0) {
+          final appDir = await getExternalStorageDirectory();
+          final savePath =
+              '${appDir!.path}/investment_report_${month}_$year.pdf';
+
+          final file = File(savePath);
+          await file.writeAsBytes(response.data);
+
+          print('PDF saved to: $savePath');
+
+          await _showAnimatedSuccessDialog('PDF downloaded successfully!',
+              'Investment report saved to device');
+
+          try {
+            await OpenFile.open(savePath);
+          } catch (e) {
+            print('Could not open PDF: $e');
+          }
+        } else {
+          print('PDF is empty - no data received');
+          Get.snackbar(
+            'Empty PDF',
+            'The PDF was generated but contains no data. Check if there are investments for this month.',
+            backgroundColor: Colors.orange,
+            colorText: Colors.white,
+          );
+        }
       } else {
-        Get.snackbar('Error', 'Failed to load investments');
+        print('PDF Error: ${response.statusCode}');
+        Get.snackbar(
+          'PDF Error',
+          'Failed to generate PDF. Status: ${response.statusCode}',
+          backgroundColor: Colors.red,
+          colorText: Colors.white,
+        );
       }
     } catch (e) {
-      print('Investment list error: $e');
-      Get.snackbar('Error', 'Failed to load investments');
+      Get.back(); // Close loading dialog if open
+      print('PDF download error: $e');
+      Get.snackbar(
+        'Error',
+        'PDF generation failed: ${e.toString()}',
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+      );
     }
   }
 
@@ -1375,11 +1796,12 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
 class _SuccessAnimationDialog extends StatefulWidget {
   final String title;
   final String message;
-  
+
   const _SuccessAnimationDialog({required this.title, required this.message});
 
   @override
-  State<_SuccessAnimationDialog> createState() => _SuccessAnimationDialogState();
+  State<_SuccessAnimationDialog> createState() =>
+      _SuccessAnimationDialogState();
 }
 
 class _SuccessAnimationDialogState extends State<_SuccessAnimationDialog>

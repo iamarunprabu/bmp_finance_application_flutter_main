@@ -39,8 +39,11 @@ class _UserDasboardState extends State<UserDasboard> {
       isLoading = true;
     });
 
-    await fetchDashboardStats();
-    await fetchMonthlyReport();
+    await Future.wait([
+      fetchDashboardStats(),
+      fetchMonthlyReport(),
+      fetchInvestmentAmount(),
+    ]);
 
     setState(() {
       isLoading = false;
@@ -53,7 +56,8 @@ class _UserDasboardState extends State<UserDasboard> {
       final username = await JwtStorage.getUsername();
 
       print('Fetching dashboard stats for user: $username');
-      print('URL: ${ApplicationConstant.baseUrl}/api/loan/dashboard?username=$username');
+      print(
+          'URL: ${ApplicationConstant.baseUrl}/api/loan/dashboard?username=$username');
 
       final response = await http.get(
         Uri.parse(
@@ -65,7 +69,7 @@ class _UserDasboardState extends State<UserDasboard> {
       );
       print('Dashboard Status Code: ${response.statusCode}');
       print('Dashboard Response: ${response.body}');
-      
+
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
         setState(() {
@@ -98,7 +102,8 @@ class _UserDasboardState extends State<UserDasboard> {
       final username = await JwtStorage.getUsername();
 
       print('Fetching monthly report for user: $username');
-      print('URL: ${ApplicationConstant.baseUrl}/api/loan/monthly-report?username=$username');
+      print(
+          'URL: ${ApplicationConstant.baseUrl}/api/loan/monthly-report?username=$username');
 
       final response = await http.get(
         Uri.parse(
@@ -141,6 +146,45 @@ class _UserDasboardState extends State<UserDasboard> {
       }
     } catch (e) {
       print("Monthly report error: $e");
+    }
+  }
+
+  Future<void> fetchInvestmentAmount() async {
+    try {
+      final token = await JwtStorage.getToken();
+      final username = await JwtStorage.getUsername();
+
+      print('Fetching investment amount for user: $username');
+      print(
+          'URL: ${ApplicationConstant.baseUrl}/api/investment/userInverstmentAmt?username=$username');
+
+      final response = await http.get(
+        Uri.parse(
+            '${ApplicationConstant.baseUrl}/api/investment/userInverstmentAmt?username=$username'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      print('Investment Amount Status Code: ${response.statusCode}');
+      print('Investment Amount Response: ${response.body}');
+
+      if (response.statusCode == 200) {
+        final List<dynamic> data = json.decode(response.body);
+        double totalInvestment = 0.0;
+
+        for (var item in data) {
+          totalInvestment += (item['inversmentAmt'] as num?)?.toDouble() ?? 0.0;
+        }
+
+        setState(() {
+          statsData['investmentAmount'] = totalInvestment;
+        });
+        print('Total Investment Amount: $totalInvestment');
+      }
+    } catch (e) {
+      print("Investment amount error: $e");
     }
   }
 
@@ -198,8 +242,8 @@ class _UserDasboardState extends State<UserDasboard> {
                           ),
                           const SizedBox(height: 20),
                           _buildStatsCards(),
-                          const SizedBox(height: 20),
-                          _buildWeeklySalesChart(),
+                          // const SizedBox(height: 20),
+                          // _buildWeeklySalesChart(),
                           const SizedBox(height: 20),
                           _buildOrdersStatusChart(),
                         ],
@@ -540,41 +584,72 @@ class _UserDasboardState extends State<UserDasboard> {
 
   Widget _buildTopBar() {
     final theme = Theme.of(context);
-    return Container(
-      height: 60,
-      color: theme.colorScheme.primary,
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Row(
-        children: [
-          IconButton(
-            icon: const Icon(Icons.menu, size: 24),
-            color: Colors.white,
-            onPressed: () => _scaffoldKey.currentState?.openDrawer(),
-          ),
-          const SizedBox(width: 8),
-          Container(
-            width: 36,
-            height: 36,
-            decoration: const BoxDecoration(
-                color: Colors.white, shape: BoxShape.circle),
-            child: Center(
-              child: Text(
-                'B',
-                style: TextStyle(
-                    color: theme.colorScheme.primary,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 20),
+    return SafeArea(
+      child: Container(
+        height: 60,
+        color: theme.colorScheme.primary,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            IconButton(
+              icon: const Icon(Icons.menu, size: 24),
+              color: Colors.white,
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(),
+              onPressed: () {
+                _scaffoldKey.currentState?.openDrawer();
+              },
+            ),
+            const SizedBox(width: 12),
+            TweenAnimationBuilder<double>(
+              tween: Tween(begin: 0.0, end: 1.0),
+              duration: const Duration(milliseconds: 800),
+              curve: Curves.elasticOut,
+              builder: (context, value, child) {
+                return Transform.scale(
+                  scale: value,
+                  child: Transform.rotate(
+                    angle: (1 - value) * 2,
+                    child: Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.2),
+                            blurRadius: 8,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      padding: const EdgeInsets.all(6),
+                      child: ClipOval(
+                        child: Image.asset(
+                          'assets/images/bmp.png',
+                          fit: BoxFit.cover,
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+            const SizedBox(width: 12),
+            const Text(
+              'BMP',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.w600,
+                color: Colors.white,
+                letterSpacing: 0.5,
               ),
             ),
-          ),
-          const SizedBox(width: 12),
-          const Text('BMP',
-              style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.white)),
-          const Spacer(),
-        ],
+            const Spacer(),
+          ],
+        ),
       ),
     );
   }
@@ -586,13 +661,16 @@ class _UserDasboardState extends State<UserDasboard> {
         Row(
           children: [
             Expanded(
-              child: _buildStatCard(
-                title: 'Inverstment Amount',
-                value: '₹0',
-                percentage: '',
-                color: const Color(0xFF10B981),
-                icon: Icons.currency_rupee,
-                isPositive: true,
+              child: GestureDetector(
+                onTap: _showInvestmentDialog,
+                child: _buildStatCard(
+                  title: 'Investment Amount',
+                  value: formatCurrency(statsData['investmentAmount'] ?? 0),
+                  percentage: '',
+                  color: const Color(0xFF10B981),
+                  icon: Icons.currency_rupee,
+                  isPositive: true,
+                ),
               ),
             ),
             const SizedBox(width: 12),
@@ -612,24 +690,52 @@ class _UserDasboardState extends State<UserDasboard> {
         Row(
           children: [
             Expanded(
-              child: _buildStatCard(
-                title: 'Approved Loans',
-                value: formatCount(statsData['approvedCount']),
-                percentage: '',
-                color: const Color(0xFF8B5CF6),
-                icon: Icons.verified_outlined,
-                isPositive: true,
+              child: GestureDetector(
+                onTap: () async {
+                  final username = await JwtStorage.getUsername();
+                  Get.toNamed(
+                    '/loan-request-list',
+                    arguments: {
+                      'isAdmin': false,
+                      'status': 'APPROVED',
+                      'username': username,
+                      'title': 'Approved Loans',
+                    },
+                  );
+                },
+                child: _buildStatCard(
+                  title: 'Approved Loans',
+                  value: formatCount(statsData['approvedCount']),
+                  percentage: '',
+                  color: const Color(0xFF8B5CF6),
+                  icon: Icons.verified_outlined,
+                  isPositive: true,
+                ),
               ),
             ),
             const SizedBox(width: 12),
             Expanded(
-              child: _buildStatCard(
-                title: 'Pending Loans',
-                value: formatCount(statsData['totalPendingCount']),
-                percentage: '',
-                color: const Color(0xFFF97316),
-                icon: Icons.hourglass_bottom,
-                isPositive: true,
+              child: GestureDetector(
+                onTap: () async {
+                  final username = await JwtStorage.getUsername();
+                  Get.toNamed(
+                    '/loan-request-list',
+                    arguments: {
+                      'isAdmin': false,
+                      'status': 'PENDING',
+                      'username': username,
+                      'title': 'Pending Loans',
+                    },
+                  );
+                },
+                child: _buildStatCard(
+                  title: 'Pending Loans',
+                  value: formatCount(statsData['totalPendingCount']),
+                  percentage: '',
+                  color: const Color(0xFFF97316),
+                  icon: Icons.hourglass_bottom,
+                  isPositive: true,
+                ),
               ),
             ),
           ],
@@ -775,23 +881,15 @@ class _UserDasboardState extends State<UserDasboard> {
                 ? Center(
                     child: Text('No data available',
                         style: TextStyle(color: Colors.grey[600])))
-                : BarChart(
-                    BarChartData(
-                      alignment: BarChartAlignment.spaceAround,
-                      maxY: maxValue,
-                      minY: 0,
-                      barTouchData: BarTouchData(
-                        enabled: true,
-                        touchTooltipData: BarTouchTooltipData(
-                          getTooltipColor: (group) => theme.colorScheme.primary,
-                          getTooltipItem: (group, groupIndex, rod, rodIndex) {
-                            return BarTooltipItem(
-                                '₹${rod.toY.toStringAsFixed(0)}',
-                                const TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.bold));
-                          },
-                        ),
+                : LineChart(
+                    LineChartData(
+                      gridData: FlGridData(
+                        show: true,
+                        drawVerticalLine: false,
+                        horizontalInterval: maxValue / 4,
+                        getDrawingHorizontalLine: (value) => FlLine(
+                            color: theme.colorScheme.onSurface.withOpacity(0.1),
+                            strokeWidth: 1),
                       ),
                       titlesData: FlTitlesData(
                         show: true,
@@ -859,40 +957,83 @@ class _UserDasboardState extends State<UserDasboard> {
                         rightTitles: const AxisTitles(
                             sideTitles: SideTitles(showTitles: false)),
                       ),
-                      gridData: FlGridData(
-                        show: true,
-                        drawVerticalLine: false,
-                        horizontalInterval: maxValue / 4,
-                        getDrawingHorizontalLine: (value) => FlLine(
-                            color: theme.colorScheme.onSurface.withOpacity(0.1),
-                            strokeWidth: 1),
-                      ),
                       borderData: FlBorderData(show: false),
-                      barGroups: List.generate(
-                          weeklySalesData.length,
-                          (index) =>
-                              _buildBarGroup(index, weeklySalesData[index])),
+                      minX: 0,
+                      maxX: (weeklySalesData.length - 1).toDouble(),
+                      minY: 0,
+                      maxY: maxValue,
+                      lineTouchData: LineTouchData(
+                        enabled: true,
+                        touchTooltipData: LineTouchTooltipData(
+                          getTooltipColor: (touchedSpot) =>
+                              theme.colorScheme.primary,
+                          getTooltipItems: (touchedSpots) {
+                            return touchedSpots.map((spot) {
+                              const months = [
+                                'Jan',
+                                'Feb',
+                                'Mar',
+                                'Apr',
+                                'May',
+                                'Jun',
+                                'Jul',
+                                'Aug',
+                                'Sep',
+                                'Oct',
+                                'Nov',
+                                'Dec'
+                              ];
+                              return LineTooltipItem(
+                                '${months[spot.x.toInt()]}\n₹${spot.y.toStringAsFixed(0)}',
+                                const TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 12),
+                              );
+                            }).toList();
+                          },
+                        ),
+                      ),
+                      lineBarsData: [
+                        LineChartBarData(
+                          spots: List.generate(
+                            weeklySalesData.length,
+                            (index) => FlSpot(
+                                index.toDouble(), weeklySalesData[index]),
+                          ),
+                          isCurved: true,
+                          color: theme.colorScheme.primary,
+                          barWidth: 3,
+                          isStrokeCapRound: true,
+                          dotData: FlDotData(
+                            show: true,
+                            getDotPainter: (spot, percent, barData, index) {
+                              return FlDotCirclePainter(
+                                radius: 4,
+                                color: Colors.white,
+                                strokeWidth: 2,
+                                strokeColor: theme.colorScheme.primary,
+                              );
+                            },
+                          ),
+                          belowBarData: BarAreaData(
+                            show: true,
+                            gradient: LinearGradient(
+                              colors: [
+                                theme.colorScheme.primary.withOpacity(0.3),
+                                theme.colorScheme.primary.withOpacity(0.0),
+                              ],
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
           ),
         ],
       ),
-    );
-  }
-
-  BarChartGroupData _buildBarGroup(int x, double value) {
-    final theme = Theme.of(context);
-    return BarChartGroupData(
-      x: x,
-      barRods: [
-        BarChartRodData(
-          toY: value,
-          color: theme.colorScheme.primary,
-          width: 16,
-          borderRadius: const BorderRadius.only(
-              topLeft: Radius.circular(4), topRight: Radius.circular(4)),
-        ),
-      ],
     );
   }
 
@@ -941,7 +1082,7 @@ class _UserDasboardState extends State<UserDasboard> {
                 sections: [
                   PieChartSectionData(
                     value: ordersStatusData['completed']!.toDouble(),
-                    color: theme.colorScheme.primary,
+                    color: const Color(0xFF10B981),
                     title: '${ordersStatusData['completed']}',
                     radius: 45,
                     titleStyle: const TextStyle(
@@ -951,7 +1092,7 @@ class _UserDasboardState extends State<UserDasboard> {
                   ),
                   PieChartSectionData(
                     value: ordersStatusData['pending']!.toDouble(),
-                    color: const Color(0xFF10B981),
+                    color: const Color(0xFFFBBF24),
                     title: '${ordersStatusData['pending']}',
                     radius: 45,
                     titleStyle: const TextStyle(
@@ -961,7 +1102,7 @@ class _UserDasboardState extends State<UserDasboard> {
                   ),
                   PieChartSectionData(
                     value: ordersStatusData['processing']!.toDouble(),
-                    color: const Color(0xFFF97316),
+                    color: const Color(0xFFEF4444),
                     title: '${ordersStatusData['processing']}',
                     radius: 45,
                     titleStyle: const TextStyle(
@@ -971,7 +1112,7 @@ class _UserDasboardState extends State<UserDasboard> {
                   ),
                   PieChartSectionData(
                     value: ordersStatusData['cancelled']!.toDouble(),
-                    color: const Color(0xFF8B5CF6),
+                    color: const Color(0xFF3B82F6),
                     title: '${ordersStatusData['cancelled']}',
                     radius: 45,
                     titleStyle: const TextStyle(
@@ -988,13 +1129,13 @@ class _UserDasboardState extends State<UserDasboard> {
             spacing: 16,
             runSpacing: 12,
             children: [
-              _buildLegendItem(theme.colorScheme.primary, 'Completed',
+              _buildLegendItem(const Color(0xFF10B981), 'Completed',
                   '${ordersStatusData['completed']}'),
-              _buildLegendItem(const Color(0xFF10B981), 'Pending',
+              _buildLegendItem(const Color(0xFFFBBF24), 'Pending',
                   '${ordersStatusData['pending']}'),
-              _buildLegendItem(const Color(0xFFF97316), 'rejected',
+              _buildLegendItem(const Color(0xFFEF4444), 'Rejected',
                   '${ordersStatusData['processing']}'),
-              _buildLegendItem(const Color(0xFF8B5CF6), 'Cancelled',
+              _buildLegendItem(const Color(0xFF3B82F6), 'Cancelled',
                   '${ordersStatusData['cancelled']}'),
             ],
           ),

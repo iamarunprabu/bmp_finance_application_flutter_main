@@ -4,6 +4,7 @@ import 'package:bmp_login/feature/authentication/model/loan_request_model.dart';
 import 'package:bmp_login/presentation/controller/loan_list_controller.dart';
 import 'package:bmp_login/presentation/controller/loan_request_controller.dart';
 import 'package:bmp_login/presentation/screen/loan_detail_dialog.dart';
+import 'package:bmp_login/presentation/widgets/curved_body_container.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 

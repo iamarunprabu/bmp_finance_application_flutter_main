@@ -9,6 +9,7 @@ class LoginScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final AuthController controller = Get.put(AuthController());
     final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
 
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
@@ -63,20 +64,31 @@ class LoginScreen extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 16),
-                    TextFormField(
+                    Obx(() => TextFormField(
                       controller: controller.passCtrl,
-                      obscureText: true,
+                      obscureText: !controller.isPasswordVisible.value,
                       decoration: InputDecoration(
                         labelText: 'Password',
                         hintText: 'Enter your password',
                         prefixIcon: Icon(Icons.lock, color: theme.colorScheme.primary),
+                        suffixIcon: IconButton(
+                          icon: Icon(
+                            controller.isPasswordVisible.value
+                                ? Icons.visibility
+                                : Icons.visibility_off,
+                            color: theme.colorScheme.primary,
+                          ),
+                          onPressed: () {
+                            controller.isPasswordVisible.value = !controller.isPasswordVisible.value;
+                          },
+                        ),
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(12),
                         ),
                         filled: true,
                         fillColor: theme.colorScheme.surface,
                       ),
-                    ),
+                    )),
                     const SizedBox(height: 24),
                     SizedBox(
                       width: double.infinity,
